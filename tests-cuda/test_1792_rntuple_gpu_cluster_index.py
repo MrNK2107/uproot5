@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import numpy
 import pytest
+import skhep_testdata
 
 import uproot
 
@@ -61,3 +62,26 @@ def test_iterate_gpu(path):
     assert ak.to_backend(ak.concatenate(chunks), "cpu").to_list() == (
         _data(0, 1000).to_list()
     )
+
+
+@pytest.mark.parametrize(
+    ("entry_start", "entry_stop"),
+    # clusters start at 0, 350, 467 and 551; float_field starts at entry 200
+    # and intvec_field at entry 400, so the ranges that start in cluster 1 pad
+    # intvec_field and those that start later pad nothing
+    [(0, 600), (350, 600), (360, 480), (400, 467), (470, 600), (551, 600)],
+)
+def test_arrays_gpu_late_columns_match_cpu(entry_start, entry_stop):
+    filename = skhep_testdata.data_path("test_extension_columns_rntuple_v1-0-0-0.root")
+    with uproot.open(filename) as file:
+        ntuple = file["ntuple"]
+        expected = ntuple.arrays(
+            entry_start=entry_start, entry_stop=entry_stop, interpreter="cpu"
+        )
+        arrays = ntuple.arrays(
+            entry_start=entry_start,
+            entry_stop=entry_stop,
+            backend="cuda",
+            interpreter="gpu",
+        )
+    assert ak.to_backend(arrays, "cpu").to_list() == expected.to_list()
